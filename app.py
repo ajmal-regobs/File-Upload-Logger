@@ -113,5 +113,28 @@ def logs():
     return jsonify({"logs": items})
 
 
+# ── File: presigned URL for viewing ──────────────────────────────────────────
+
+@app.route("/file/<file_id>")
+def view_file(file_id):
+    table  = dynamo().Table(DYNAMO_TABLE)
+    result = table.get_item(Key={"id": file_id})
+    item   = result.get("Item")
+    if not item:
+        return jsonify({"error": "not found"}), 404
+
+    s3_key = item.get("s3_key")
+    if not s3_key:
+        return jsonify({"error": "no s3 key"}), 404
+
+    url = s3().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": S3_BUCKET, "Key": s3_key},
+        ExpiresIn=300,
+    )
+    from flask import redirect
+    return redirect(url)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

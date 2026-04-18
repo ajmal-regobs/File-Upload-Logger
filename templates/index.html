@@ -47,11 +47,14 @@
 
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-weight: 600; color: #475569; }
-    td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
              font-size: 0.75rem; font-weight: 600; background: #d1fae5; color: #065f46; }
     .empty { text-align: center; color: #aaa; padding: 28px; font-size: 0.9rem; }
+    .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px;
+             border: 1px solid #e2e8f0; cursor: pointer; display: block; }
+    .no-preview { font-size: 0.75rem; color: #aaa; }
 
     .queue-count { font-size: 0.85rem; color: #6366f1; font-weight: 600; }
   </style>
@@ -189,11 +192,20 @@
         logsContainer.innerHTML = '<p class="empty">No logs yet.</p>';
         return;
       }
+      const IMAGE_EXTS = new Set(["jpg","jpeg","png","gif","webp","bmp","svg","ico"]);
+      function isImage(name) {
+        const ext = (name || "").split(".").pop().toLowerCase();
+        return IMAGE_EXTS.has(ext);
+      }
       logsContainer.innerHTML = `
         <table>
-          <thead><tr><th>File</th><th>S3 Key</th><th>Status</th><th>Created At</th></tr></thead>
+          <thead><tr><th>Preview</th><th>File</th><th>S3 Key</th><th>Status</th><th>Created At</th></tr></thead>
           <tbody>${logs.map(l => `
             <tr>
+              <td>${isImage(l.file_name)
+                ? `<a href="/file/${l.id}" target="_blank"><img class="thumb" src="/file/${l.id}" alt="${l.file_name}" /></a>`
+                : `<span class="no-preview">—</span>`}
+              </td>
               <td>${l.file_name || "-"}</td>
               <td style="color:#6366f1;font-size:0.8rem;">${l.s3_key || "-"}</td>
               <td><span class="badge">${l.status || "received"}</span></td>
