@@ -15,7 +15,7 @@ app = Flask(__name__)
 S3_BUCKET    = os.environ["S3_BUCKET_NAME"]
 SQS_URL      = os.environ["SQS_QUEUE_URL"]
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE_NAME"]
-AWS_REGION   = os.environ.get("AWS_REGION", "us-east-1")
+AWS_REGION   = os.environ.get("AWS_REGION", "ap-south-1")
 
 
 def s3():
