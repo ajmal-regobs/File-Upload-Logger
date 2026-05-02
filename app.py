@@ -18,14 +18,9 @@ DYNAMO_TABLE = os.environ["DYNAMODB_TABLE_NAME"]
 AWS_REGION   = os.environ.get("AWS_REGION", "ap-south-1")
 
 
-def s3():
-    return boto3.client("s3", region_name=AWS_REGION)
-
-def sqs():
-    return boto3.client("sqs", region_name=AWS_REGION)
-
-def dynamo():
-    return boto3.resource("dynamodb", region_name=AWS_REGION)
+s3_client    = boto3.client("s3", region_name=AWS_REGION)
+sqs_client   = boto3.client("sqs", region_name=AWS_REGION)
+dynamo_table = boto3.resource("dynamodb", region_name=AWS_REGION).Table(DYNAMO_TABLE)
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────
@@ -53,7 +48,7 @@ def upload():
     ts       = datetime.now(timezone.utc).isoformat()
 
     # 1. Upload to S3
-    s3().upload_fileobj(file, S3_BUCKET, s3_key)
+    s3_client.upload_fileobj(file, S3_BUCKET, s3_key)
     logger.info("S3 upload bucket=%s key=%s", S3_BUCKET, s3_key)
 
     # 2. Send message to SQS
@@ -64,7 +59,7 @@ def upload():
         "s3_key":    s3_key,
         "timestamp": ts,
     }
-    sqs().send_message(QueueUrl=SQS_URL, MessageBody=json.dumps(message))
+    sqs_client.send_message(QueueUrl=SQS_URL, MessageBody=json.dumps(message))
     logger.info("SQS send file_id=%s", file_id)
 
     return jsonify({"file_id": file_id, "file_name": filename, "s3_key": s3_key, "status": "queued"})
@@ -74,7 +69,7 @@ def upload():
 
 @app.route("/process", methods=["POST"])
 def process():
-    resp = sqs().receive_message(
+    resp = sqs_client.receive_message(
         QueueUrl=SQS_URL,
         MaxNumberOfMessages=10,
         WaitTimeSeconds=2,
@@ -83,7 +78,6 @@ def process():
     if not messages:
         return jsonify({"processed": 0, "message": "queue is empty"})
 
-    table = dynamo().Table(DYNAMO_TABLE)
     count = 0
     for msg in messages:
         body = json.loads(msg["Body"])
@@ -95,8 +89,8 @@ def process():
             "status":     "received",
             "created_at": body.get("timestamp", datetime.now(timezone.utc).isoformat()),
         }
-        table.put_item(Item=item)
-        sqs().delete_message(QueueUrl=SQS_URL, ReceiptHandle=msg["ReceiptHandle"])
+        dynamo_table.put_item(Item=item)
+        sqs_client.delete_message(QueueUrl=SQS_URL, ReceiptHandle=msg["ReceiptHandle"])
         logger.info("DynamoDB write id=%s file=%s", item["id"], item["file_name"])
         count += 1
 
@@ -107,8 +101,7 @@ def process():
 
 @app.route("/logs")
 def logs():
-    table  = dynamo().Table(DYNAMO_TABLE)
-    result = table.scan()
+    result = dynamo_table.scan()
     items  = sorted(result.get("Items", []), key=lambda x: x.get("created_at", ""), reverse=True)
     return jsonify({"logs": items})
 
@@ -117,8 +110,7 @@ def logs():
 
 @app.route("/file/<file_id>")
 def view_file(file_id):
-    table  = dynamo().Table(DYNAMO_TABLE)
-    result = table.get_item(Key={"id": file_id})
+    result = dynamo_table.get_item(Key={"id": file_id})
     item   = result.get("Item")
     if not item:
         return jsonify({"error": "not found"}), 404
@@ -127,7 +119,7 @@ def view_file(file_id):
     if not s3_key:
         return jsonify({"error": "no s3 key"}), 404
 
-    url = s3().generate_presigned_url(
+    url = s3_client.generate_presigned_url(
         "get_object",
         Params={"Bucket": S3_BUCKET, "Key": s3_key},
         ExpiresIn=300,
